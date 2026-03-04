@@ -1,301 +1,259 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const PERMISSIONS = ['VIEWER', 'RESTRICTED_QUERIER'];
-const MODES = [
-  { value: 'SINGLE_CONTENT', label: 'Single Content Mode' },
-  { value: 'APPLICATION', label: 'Application Mode' },
-];
-
-// ─── App ─────────────────────────────────────────────────────────────────────
-export default function App() {
-  // State
-  const [isDark, setIsDark] = useState(false);
-  const [clinics, setClinics] = useState([]);
-  const [selectedClinic, setSelectedClinic] = useState(null);
-  const [permission, setPermission] = useState('VIEWER');
-  const [mode, setMode] = useState('SINGLE_CONTENT');
-  const [embedUrl, setEmbedUrl] = useState('');
-  const [clinicTheme, setClinicTheme] = useState({ accent: '#e37803', background: '#FAFAFA' });
+function App() {
+  const [email, setEmail] = useState('');
+  const [connectionRole, setConnectionRole] = useState('VIEWER');
+  const [mode, setMode] = useState('SINGLE_CONTENT'); // Dashboard by default
+  const [embedUrl, setEmbedUrl] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [events, setEvents] = useState([]);
-  const iframeRef = useRef(null);
+  const [error, setError] = useState(null);
+  const [clinics, setClinics] = useState([]);
+  const [loadingClinics, setLoadingClinics] = useState(true);
+  const [theme, setTheme] = useState('light'); // Theme state
 
-  // ─── Smart mode enforcement ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (permission === 'RESTRICTED_QUERIER') {
+  // Apply theme to document
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+  };
+
+  // Auto-switch to APPLICATION mode when RESTRICTED_QUERIER is selected
+  React.useEffect(() => {
+    if (connectionRole === 'RESTRICTED_QUERIER' && mode === 'SINGLE_CONTENT') {
       setMode('APPLICATION');
     }
-  }, [permission]);
+  }, [connectionRole, mode]);
 
-  // ─── Fetch clinics from backend ─────────────────────────────────────────────
-  useEffect(() => {
-    fetch('/api/clinics')
-      .then(r => r.json())
-      .then(data => {
-        setClinics(data);
-        if (data.length > 0) setSelectedClinic(data[0]);
-      })
-      .catch(err => setError('Failed to load clinics: ' + err.message));
-  }, []);
-
-  // ─── Listen for Omni postMessage events ────────────────────────────────────
-  useEffect(() => {
-    const handler = (event) => {
-      if (!event.data?.type?.startsWith('omni:')) return;
-      const entry = {
-        time: new Date().toLocaleTimeString(),
-        type: event.data.type,
-        data: JSON.stringify(event.data, null, 2),
-      };
-      setEvents(prev => [entry, ...prev].slice(0, 20));
+  // Fetch clinic list on mount
+  React.useEffect(() => {
+    const fetchClinics = async () => {
+      try {
+        const response = await fetch('/api/clinics');
+        const data = await response.json();
+        if (data.success) {
+          setClinics(data.clinics);
+        }
+      } catch (err) {
+        console.error('Failed to fetch clinics:', err);
+      } finally {
+        setLoadingClinics(false);
+      }
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
+    fetchClinics();
   }, []);
 
-  // ─── Generate embed URL ─────────────────────────────────────────────────────
-  async function handleGenerate() {
-    if (!selectedClinic) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
-    setError('');
-    setEmbedUrl('');
+    setError(null);
 
     try {
-      const res = await fetch('/api/embed-url', {
+      const response = await fetch('/api/embed-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clinicId: selectedClinic.clinic_id,
-          clinicName: selectedClinic.clinic_name,
-          permission,
-          mode,
-          isDark,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, connectionRole, mode }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate URL');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to generate embed URL');
+      }
 
       setEmbedUrl(data.embedUrl);
-      if (data.theme) setClinicTheme(data.theme);
     } catch (err) {
       setError(err.message);
+      setEmbedUrl(null);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  // ─── Theme vars ─────────────────────────────────────────────────────────────
-  const appBg = isDark ? '#1a0e05' : '#FAFAFA';
-  const headerBg = isDark
-    ? 'linear-gradient(135deg, #372006, #4e3922)'
-    : 'linear-gradient(135deg, #e37803, #fc9e36)';
-  const cardBg = isDark ? '#2d1a0a' : '#ffffff';
-  const textPrimary = isDark ? '#f4cea4' : '#4e3922';
-  const textSecondary = isDark ? '#c9a07a' : '#7a5c3e';
-  const borderColor = isDark ? '#4e3922' : '#f0dcc8';
-  const accent = clinicTheme.accent;
+  const handleReset = () => {
+    setEmail('');
+    setEmbedUrl(null);
+    setError(null);
+  };
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: appBg, fontFamily: "'Segoe UI', system-ui, sans-serif", transition: 'all 0.3s' }}>
-
-      {/* ── Header ── */}
-      <header style={{ background: headerBg, padding: '0 24px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ background: '#fff', borderRadius: '10px', padding: '6px 10px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-            <img src="/petcarepro_logo.png" alt="PetCare Pro" style={{ height: '32px', display: 'block' }} />
-          </div>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: '18px', letterSpacing: '-0.3px' }}>
-            PetCare Pro
-          </span>
+    <div className="app-container">
+      {/* Header */}
+      <header className="app-header">
+        <img 
+          src="/petcarepro_logo.png" 
+          alt="PetCare Pro" 
+          className="header-logo"
+        />
+        <div className="header-content">
+          <h1>🐾 PetCare Pro Analytics</h1>
+          <p className="subtitle">Embedded Analytics Demo</p>
         </div>
-        <span style={{ color: '#fff', opacity: 0.8, fontSize: '13px', fontWeight: 500 }}>
-          Analytics Portal
-        </span>
-        <button
-          onClick={() => setIsDark(d => !d)}
-          title="Toggle theme"
-          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '18px', transition: 'all 0.2s' }}
-        >
-          {isDark ? '☀️' : '🌙'}
+        <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+          {theme === 'light' ? '🌙' : '☀️'}
         </button>
       </header>
 
-      {/* ── Main Layout ── */}
-      <div style={{ display: 'flex', gap: '20px', padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
-
-        {/* ── Control Panel ── */}
-        <aside style={{ width: '280px', flexShrink: 0 }}>
-          <div style={{ background: cardBg, borderRadius: '16px', padding: '24px', border: `1px solid ${borderColor}`, boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }}>
-            <h2 style={{ color: textPrimary, fontSize: '15px', fontWeight: 700, margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🐾 Launch Cradle
-            </h2>
-
-            {/* Clinic Select */}
-            <label style={{ display: 'block', marginBottom: '16px' }}>
-              <span style={{ color: textSecondary, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clinic</span>
-              <select
-                value={selectedClinic?.clinic_id || ''}
-                onChange={e => {
-                  const c = clinics.find(x => x.clinic_id === e.target.value);
-                  setSelectedClinic(c);
-                  setEmbedUrl('');
-                }}
-                style={{ width: '100%', marginTop: '6px', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${borderColor}`, background: appBg, color: textPrimary, fontSize: '14px', outline: 'none', cursor: 'pointer' }}
-              >
-                {clinics.map(c => (
-                  <option key={c.clinic_id} value={c.clinic_id}>{c.clinic_name}</option>
-                ))}
-              </select>
-            </label>
-
-            {/* Permission */}
-            <div style={{ marginBottom: '16px' }}>
-              <span style={{ color: textSecondary, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>Permission</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {PERMISSIONS.map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPermission(p)}
-                    style={{
-                      flex: 1, padding: '8px 4px', borderRadius: '8px', border: `2px solid ${permission === p ? accent : borderColor}`,
-                      background: permission === p ? accent : 'transparent', color: permission === p ? '#fff' : textSecondary,
-                      fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    }}
-                  >
-                    {p === 'VIEWER' ? '👁 Viewer' : '🔍 Explorer'}
-                  </button>
-                ))}
-              </div>
-              {permission === 'RESTRICTED_QUERIER' && (
-                <p style={{ color: accent, fontSize: '11px', margin: '6px 0 0', fontStyle: 'italic' }}>
-                  ↑ Auto-switched to Application Mode
-                </p>
-              )}
-            </div>
-
-            {/* Mode */}
-            <div style={{ marginBottom: '20px' }}>
-              <span style={{ color: textSecondary, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>Embed Mode</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {MODES.map(m => {
-                  const isDisabled = m.value === 'SINGLE_CONTENT' && permission === 'RESTRICTED_QUERIER';
-                  const isActive = mode === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      onClick={() => !isDisabled && setMode(m.value)}
-                      disabled={isDisabled}
-                      style={{
-                        padding: '10px 12px', borderRadius: '8px',
-                        border: `2px solid ${isActive ? accent : borderColor}`,
-                        background: isActive ? `${accent}18` : 'transparent',
-                        color: isDisabled ? textSecondary : (isActive ? accent : textSecondary),
-                        fontSize: '13px', fontWeight: isActive ? 700 : 500,
-                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                        opacity: isDisabled ? 0.5 : 1,
-                        textAlign: 'left', transition: 'all 0.2s',
-                      }}
-                    >
-                      {m.value === 'SINGLE_CONTENT' ? '📊 ' : '🖥️ '}{m.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Generate Button */}
-            <button
-              onClick={handleGenerate}
-              disabled={loading || !selectedClinic}
-              style={{
-                width: '100%', padding: '12px', borderRadius: '10px',
-                background: loading ? textSecondary : `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-                color: '#fff', border: 'none', fontSize: '15px', fontWeight: 700,
-                cursor: loading ? 'not-allowed' : 'pointer', boxShadow: `0 4px 14px ${accent}55`,
-                transition: 'all 0.2s',
-              }}
-            >
-              {loading ? '⏳ Generating...' : '🚀 Launch Analytics'}
-            </button>
-
-            {error && (
-              <div style={{ marginTop: '12px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '12px' }}>
-                ❌ {error}
-              </div>
-            )}
-
-            {/* Clinic Theme Swatch */}
-            {selectedClinic && (
-              <div style={{ marginTop: '20px', padding: '12px', background: `${clinicTheme.accent}18`, borderRadius: '10px', border: `1px solid ${clinicTheme.accent}44` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: clinicTheme.accent }} />
-                  <span style={{ color: textSecondary, fontSize: '12px', fontWeight: 600 }}>Clinic Theme</span>
-                </div>
-                <p style={{ color: textSecondary, fontSize: '11px', margin: '4px 0 0' }}>{clinicTheme.accent}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Event Log */}
-          {events.length > 0 && (
-            <div style={{ marginTop: '16px', background: cardBg, borderRadius: '16px', padding: '16px', border: `1px solid ${borderColor}` }}>
-              <h3 style={{ color: textPrimary, fontSize: '13px', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📡 Omni Events
-              </h3>
-              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                {events.map((ev, i) => (
-                  <div key={i} style={{ marginBottom: '8px', padding: '8px', background: `${accent}10`, borderRadius: '6px', borderLeft: `3px solid ${accent}` }}>
-                    <div style={{ color: accent, fontSize: '11px', fontWeight: 700 }}>{ev.time} · {ev.type}</div>
-                    <pre style={{ color: textSecondary, fontSize: '10px', margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      {ev.data}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </aside>
-
-        {/* ── Embed Area ── */}
-        <main style={{ flex: 1, minWidth: 0 }}>
-          {embedUrl ? (
-            <div style={{ borderRadius: '16px', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.12)', border: `1px solid ${borderColor}`, height: 'calc(100vh - 112px)' }}>
-              <iframe
-                ref={iframeRef}
-                src={embedUrl}
-                title="PetCare Pro Analytics"
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                allow="fullscreen"
+      {/* Main Content */}
+      <main className="main-content">
+        {!embedUrl ? (
+          /* Login Form */
+          <div className="login-container">
+            {/* Logo Section */}
+            <div className="logo-section">
+              <img 
+                src="/petcarepro_logo.png" 
+                alt="PetCare Pro" 
+                className="app-logo"
               />
             </div>
-          ) : (
-            <div style={{ height: 'calc(100vh - 112px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '16px', border: `2px dashed ${borderColor}`, background: cardBg }}>
-              <div style={{ fontSize: '64px', marginBottom: '16px' }}>🐾</div>
-              <h2 style={{ color: textPrimary, margin: '0 0 8px', fontWeight: 700 }}>Ready to Explore</h2>
-              <p style={{ color: textSecondary, margin: 0, fontSize: '15px' }}>
-                Select a clinic and click <strong>Launch Analytics</strong> to begin
+
+            <div className="login-card">
+              <div className="card-icon">📊</div>
+              <h2>Access Your Analytics</h2>
+              <p className="login-description">
+                Enter your clinic email to view your personalized dashboard
               </p>
-              <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
-                {[
-                  { icon: '📊', label: 'Dashboard View' },
-                  { icon: '🔍', label: 'Data Exploration' },
-                  { icon: '🔒', label: 'Row-Level Security' },
-                  { icon: '🎨', label: 'Per-Tenant Theming' },
-                ].map(f => (
-                  <div key={f.label} style={{ padding: '12px 16px', background: `${accent}12`, borderRadius: '10px', textAlign: 'center', border: `1px solid ${accent}30` }}>
-                    <div style={{ fontSize: '24px' }}>{f.icon}</div>
-                    <div style={{ color: textSecondary, fontSize: '12px', marginTop: '4px', fontWeight: 600 }}>{f.label}</div>
+
+              <form onSubmit={handleSubmit}>
+                <div className="form-group">
+                  <label htmlFor="email">Select Clinic</label>
+                  {loadingClinics ? (
+                    <div className="loading-message">Loading clinics...</div>
+                  ) : (
+                    <select
+                      id="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={loading}
+                      className="clinic-select"
+                    >
+                      <option value="">-- Choose a clinic --</option>
+                      {clinics.map((clinic) => (
+                        <option key={clinic.email} value={clinic.email}>
+                          {clinic.clinic_name} ({clinic.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="connectionRole">Connection Role</label>
+                  <select
+                    id="connectionRole"
+                    value={connectionRole}
+                    onChange={(e) => setConnectionRole(e.target.value)}
+                    disabled={loading}
+                    className="role-select"
+                  >
+                    <option value="VIEWER">Viewer - Read-only access</option>
+                    <option value="RESTRICTED_QUERIER">Restricted Querier - Can explore data</option>
+                  </select>
+                  <small className="role-hint">
+                    {connectionRole === 'VIEWER' 
+                      ? '👁️ View dashboards only, no editing' 
+                      : '🔍 Explore data and create custom analyses'}
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label>Experience Mode</label>
+                  <div className="mode-selector">
+                    <button
+                      type="button"
+                      className={`mode-button ${mode === 'SINGLE_CONTENT' ? 'active' : ''} ${connectionRole === 'RESTRICTED_QUERIER' ? 'disabled' : ''}`}
+                      onClick={() => setMode('SINGLE_CONTENT')}
+                      disabled={loading || connectionRole === 'RESTRICTED_QUERIER'}
+                    >
+                      <span className="mode-icon">📊</span>
+                      <div className="mode-text">
+                        <strong>Single Content Mode</strong>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`mode-button ${mode === 'APPLICATION' ? 'active' : ''}`}
+                      onClick={() => setMode('APPLICATION')}
+                      disabled={loading}
+                    >
+                      <span className="mode-icon">🔍</span>
+                      <div className="mode-text">
+                        <strong>Application Mode</strong>
+                      </div>
+                    </button>
                   </div>
-                ))}
+                  {connectionRole === 'RESTRICTED_QUERIER' && (
+                    <small className="mode-hint">
+                      ℹ️ Restricted Querier requires Application Mode
+                    </small>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="error-message">
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                <button 
+                  type="submit" 
+                  className="submit-button"
+                  disabled={loading}
+                >
+                  {loading ? 'Loading...' : 'Access Analytics'}
+                </button>
+              </form>
+
+              <div className="demo-hint">
+                <small>💡 <strong>Demo Tip:</strong> Select a clinic, pick permissions, and see RLS in action!</small>
               </div>
             </div>
-          )}
-        </main>
-      </div>
+          </div>
+        ) : (
+          /* Embedded Analytics */
+          <div className="embed-container">
+            {/* Simple Header */}
+            <div className="embed-header">
+              <div className="embed-info">
+                <span className="user-email">👤 {email}</span>
+                <span className="role-badge">
+                  {connectionRole === 'VIEWER' ? '👁️ Viewer' : '🔍 Restricted Querier'}
+                </span>
+                <span className="mode-badge">
+                  {mode === 'SINGLE_CONTENT' ? '📊 Single Content Mode' : '🔍 Application Mode'}
+                </span>
+              </div>
+              <button onClick={handleReset} className="reset-button">
+                ← Back to Login
+              </button>
+            </div>
+
+            {/* Omni Embed */}
+            <div className="embed-wrapper">
+              <iframe
+                src={embedUrl}
+                className="embed-iframe"
+                title="PetCare Pro Analytics"
+                allow="clipboard-write"
+              />
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <p>Powered by <strong>Omni Analytics</strong> • Multi-tenant embedded analytics showcase</p>
+      </footer>
     </div>
   );
 }
+
+export default App;
