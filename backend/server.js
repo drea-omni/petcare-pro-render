@@ -24,7 +24,6 @@ if (IS_PROD) {
 }
 
 // ── Map UI selection → valid Omni connectionRoles value ──────────────────────
-// Omni accepts: VIEWER, QUERIER, EDITOR — NOT RESTRICTED_QUERIER
 const CONNECTION_ROLE_MAP = {
   'VIEWER': 'VIEWER',
   'RESTRICTED_QUERIER': 'QUERIER'
@@ -54,7 +53,7 @@ async function getClinicList() {
        FROM petcare_pro_db.marts.dim_clinics 
        ORDER BY clinic_name`,
       (err, result) => {
-        if (err) { console.error('MotherDuck query error:', err); reject(err); }
+        if (err) { reject(err); }
         else { resolve(result); }
       }
     );
@@ -69,34 +68,35 @@ async function getClinicByEmail(email) {
        WHERE email = ?`,
       [email],
       (err, result) => {
-        if (err) { console.error('MotherDuck query error:', err); reject(err); }
+        if (err) { reject(err); }
         else { resolve(result[0] || null); }
       }
     );
   });
 }
+
 function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, clinicId, clinicName) {
   const baseUrl = process.env.OMNI_BASE_URL;
   const secret = process.env.OMNI_EMBED_SECRET;
   const connectionId = process.env.OMNI_CONNECTION_ID;
 
-  // 🔍 DEBUG - remove after testing
-  console.log('SECRET length:', secret?.length);
-  console.log('SECRET first 4 chars:', secret?.substring(0, 4));
-  console.log('SECRET last 4 chars:', secret?.slice(-4));
+  // 🔍 DEBUG — remove after testing
+  console.log('=== DEBUG ENV ===');
   console.log('BASE_URL:', baseUrl);
+  console.log('CONNECTION_ID:', connectionId);
+  console.log('SECRET length:', secret?.length);
+  console.log('SECRET first 4:', secret?.substring(0, 4));
+  console.log('SECRET last 4:', secret?.slice(-4));
+  console.log('SECRET has newline?', secret?.includes('\n'));
+  console.log('SECRET has space?', secret?.includes(' '));
+  console.log('=================');
 
-function generateOmniSignedUrlOLD(userEmail, connectionRole, mode, dashboardPath, clinicId, clinicName) {
-  const baseUrl = process.env.OMNI_BASE_URL;
-  const secret = process.env.OMNI_EMBED_SECRET;
-  const connectionId = process.env.OMNI_CONNECTION_ID;
   const loginUrl = `${baseUrl}/embed/login`;
   const nonce = crypto.randomBytes(24).toString('base64url').slice(0, 32);
   const externalId = userEmail;
   const name = userEmail.split('@')[0];
   const embedPath = mode === 'APPLICATION' ? '/shared' : dashboardPath;
 
-  // ── Map UI role → valid Omni API value ───────────────────────────────────
   const omniConnectionRole = CONNECTION_ROLE_MAP[connectionRole] || 'VIEWER';
   const connectionRoles = JSON.stringify({ [connectionId]: omniConnectionRole });
 
@@ -111,23 +111,30 @@ function generateOmniSignedUrlOLD(userEmail, connectionRole, mode, dashboardPath
   ].join('\n').trimEnd();
 
   console.log('Signing string:\n' + signingString);
+  console.log('Signing string length:', signingString.length);
 
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(signingString);
   const signature = hmac.digest('base64url');
 
   const params = new URLSearchParams({
-    contentPath: embedPath, externalId, name, nonce,
-    connectionRoles, entity, entityFolderContentRole,
-    mode: embedMode, userAttributes, signature
+    contentPath: embedPath,
+    externalId,
+    name,
+    nonce,
+    connectionRoles,
+    entity,
+    entityFolderContentRole,
+    mode: embedMode,
+    userAttributes,
+    signature
   });
 
   const finalUrl = `${loginUrl}?${params.toString()}`;
 
-  console.log('\n✅ Generated embed URL for:', userEmail);
   console.log('UI Role:', connectionRole, '→ Omni Role:', omniConnectionRole);
   console.log('entityFolderContentRole:', entityFolderContentRole);
-  console.log('Full URL:', finalUrl, '\n');
+  console.log('Full URL:', finalUrl);
 
   return finalUrl;
 }
@@ -169,7 +176,11 @@ app.post('/api/embed-url', async (req, res) => {
       clinic.clinic_id, clinic.clinic_name
     );
 
-    res.json({ success: true, embedUrl, user: { email, connectionRole, mode, clinicId: clinic.clinic_id, clinicName: clinic.clinic_name } });
+    res.json({ 
+      success: true, 
+      embedUrl, 
+      user: { email, connectionRole, mode, clinicId: clinic.clinic_id, clinicName: clinic.clinic_name } 
+    });
 
   } catch (error) {
     console.error('Error generating embed URL:', error);
@@ -187,4 +198,3 @@ app.listen(PORT, () => {
   console.log(`\n🚀 PetCare Pro running on port ${PORT} [${IS_PROD ? 'production' : 'development'}]`);
   console.log(`🔗 Health: http://localhost:${PORT}/health\n`);
 });
-
