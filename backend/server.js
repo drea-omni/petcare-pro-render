@@ -98,9 +98,9 @@ function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, c
   const signingString = [
     loginUrl, embedPath, externalId, name, nonce,
     connectionRoles, entity, entityFolderContentRole, embedMode, userAttributes
-  ].join('\n');
+  ].join('\n').trimEnd();
 
-  console.log('\nSigning string:\n', signingString);
+  console.log('Signing string:\n' + signingString);
 
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(signingString);
