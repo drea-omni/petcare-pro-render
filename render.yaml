@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: petcare-pro
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: OMNI_EMBED_SECRET
+        sync: false
+      - key: OMNI_ORG_URL
+        sync: false
+      - key: OMNI_CONNECTION_ID
+        sync: false
+      - key: OMNI_DASHBOARD_PATH
+        sync: false
+      - key: MOTHERDUCK_TOKEN
+        sync: false

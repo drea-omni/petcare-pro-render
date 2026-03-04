@@ -1,0 +1,20 @@
+{
+  "name": "petcare-pro",
+  "version": "1.0.0",
+  "description": "PetCare Pro - Omni Embedded Analytics Demo",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "node backend/server.js",
+    "dev:backend": "node backend/server.js",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "duckdb": "^0.10.3",
+    "express": "^4.19.2"
+  }
+}
