@@ -24,6 +24,7 @@ if (IS_PROD) {
 }
 
 // ── Map UI selection → valid Omni connectionRoles value ──────────────────────
+// Omni accepts: VIEWER, QUERIER, EDITOR — NOT RESTRICTED_QUERIER
 const CONNECTION_ROLE_MAP = {
   'VIEWER': 'VIEWER',
   'RESTRICTED_QUERIER': 'QUERIER'
@@ -80,17 +81,6 @@ function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, c
   const secret = process.env.OMNI_EMBED_SECRET;
   const connectionId = process.env.OMNI_CONNECTION_ID;
 
-  // 🔍 DEBUG — remove after testing
-  console.log('=== DEBUG ENV ===');
-  console.log('BASE_URL:', baseUrl);
-  console.log('CONNECTION_ID:', connectionId);
-  console.log('SECRET length:', secret?.length);
-  console.log('SECRET first 4:', secret?.substring(0, 4));
-  console.log('SECRET last 4:', secret?.slice(-4));
-  console.log('SECRET has newline?', secret?.includes('\n'));
-  console.log('SECRET has space?', secret?.includes(' '));
-  console.log('=================');
-
   const loginUrl = `${baseUrl}/embed/login`;
   const nonce = crypto.randomBytes(24).toString('base64url').slice(0, 32);
   const externalId = userEmail;
@@ -109,9 +99,6 @@ function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, c
     loginUrl, embedPath, externalId, name, nonce,
     connectionRoles, entity, entityFolderContentRole, embedMode, userAttributes
   ].join('\n').trimEnd();
-
-  console.log('Signing string:\n' + signingString);
-  console.log('Signing string length:', signingString.length);
 
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(signingString);
@@ -132,9 +119,7 @@ function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, c
 
   const finalUrl = `${loginUrl}?${params.toString()}`;
 
-  console.log('UI Role:', connectionRole, '→ Omni Role:', omniConnectionRole);
-  console.log('entityFolderContentRole:', entityFolderContentRole);
-  console.log('Full URL:', finalUrl);
+  console.log(`✅ Embed URL generated | ${clinicName} | ${connectionRole} → ${omniConnectionRole} | ${mode}`);
 
   return finalUrl;
 }
@@ -176,10 +161,10 @@ app.post('/api/embed-url', async (req, res) => {
       clinic.clinic_id, clinic.clinic_name
     );
 
-    res.json({ 
-      success: true, 
-      embedUrl, 
-      user: { email, connectionRole, mode, clinicId: clinic.clinic_id, clinicName: clinic.clinic_name } 
+    res.json({
+      success: true,
+      embedUrl,
+      user: { email, connectionRole, mode, clinicId: clinic.clinic_id, clinicName: clinic.clinic_name }
     });
 
   } catch (error) {
