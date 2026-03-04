@@ -177,3 +177,14 @@ app.listen(PORT, () => {
   console.log(`\n🚀 PetCare Pro running on port ${PORT} [${IS_PROD ? 'production' : 'development'}]`);
   console.log(`🔗 Health: http://localhost:${PORT}/health\n`);
 });
+
+function generateOmniSignedUrl(userEmail, connectionRole, mode, dashboardPath, clinicId, clinicName) {
+  const baseUrl = process.env.OMNI_BASE_URL;
+  const secret = process.env.OMNI_EMBED_SECRET;
+  const connectionId = process.env.OMNI_CONNECTION_ID;
+
+  // 🔍 DEBUG - remove after testing
+  console.log('SECRET length:', secret?.length);
+  console.log('SECRET first 4 chars:', secret?.substring(0, 4));
+  console.log('SECRET last 4 chars:', secret?.slice(-4));
+  console.log('BASE_URL:', baseUrl);
